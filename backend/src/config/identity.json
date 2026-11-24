@@ -1,0 +1,14 @@
+{
+  "slug": "yangyang-43-beam-density",
+  "title": "弧映影院·投影光斑偏移异常簇",
+  "direction": "谱聚类与离群校光",
+  "layout": "invert",
+  "theme": "琥珀灰放映校片",
+  "recipient": "放映校光班",
+  "work_modules": [
+    "白场校光台账",
+    "偏移亲和图分群",
+    "孤立场次复拍"
+  ],
+  "follow_latest": false
+}

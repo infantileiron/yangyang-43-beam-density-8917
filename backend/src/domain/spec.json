@@ -1,0 +1,71 @@
+{
+  "organization": "弧映小厅影院（6 个放映室）",
+  "tagline": "用屏幕偏移坐标的亲和图识别不同校光工位的读数簇，孤立读数另列。",
+  "source": "《白场校光靶_202611.csv》记录镜头和标靶坐标",
+  "record_name": "白场校光拍摄",
+  "algorithm": "归一化拉普拉斯谱聚类与孤点筛查",
+  "formula": "按毫米距离构造高斯亲和矩阵，亲和度行和过小的标记复拍；剩余点使用归一化拉普拉斯最小特征向量，行归一后在谱空间聚类。",
+  "decision_prompt": "两类偏移是否集中出现在某些厅，哪些校光拍摄应当班复拍？",
+  "fields": [
+    {
+      "key": "ticket",
+      "label": "拍摄编号",
+      "type": "text",
+      "example": "HY-X02"
+    },
+    {
+      "key": "room",
+      "label": "放映室",
+      "type": "text",
+      "example": "西弧 3 厅"
+    },
+    {
+      "key": "day",
+      "label": "拍摄日期",
+      "type": "date",
+      "example": "2026-11-23"
+    },
+    {
+      "key": "dx",
+      "label": "横向偏移（mm）",
+      "type": "number",
+      "example": 18,
+      "min": -200,
+      "max": 200
+    },
+    {
+      "key": "dy",
+      "label": "纵向偏移（mm）",
+      "type": "number",
+      "example": -11,
+      "min": -200,
+      "max": 200
+    }
+  ],
+  "parameters": [
+    {
+      "key": "bandwidth",
+      "label": "高斯图带宽（mm）",
+      "type": "number",
+      "min": 0.1,
+      "max": 80,
+      "default": 3
+    },
+    {
+      "key": "minimum_degree",
+      "label": "亲和度下限",
+      "type": "number",
+      "min": 0.001,
+      "max": 50,
+      "default": 1.1
+    },
+    {
+      "key": "classes",
+      "label": "期望工况簇数",
+      "type": "integer",
+      "min": 2,
+      "max": 6,
+      "default": 2
+    }
+  ]
+}
