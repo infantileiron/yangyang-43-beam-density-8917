@@ -4,11 +4,13 @@ import logging
 from sqlalchemy import select
 
 from src.config.project import SPEC
-from src.constants.enums import Decision, Role, RunStatus
+from src.constants.enums import Role, RunStatus
 from src.domain.analysis import analyze
 from src.models.base import utc_now
 from src.models.workflow import AnalysisRun, AuditEvent, Observation, Review
 from src.services.errors import BusinessError
+from src.services.retakes import (active_order, create_order_from_run, latest_snapshot_observation_ids,
+                                  prior_orphan_baseline)
 from src.services.validation import validated
 
 logger = logging.getLogger(__name__)
@@ -16,21 +18,25 @@ logger = logging.getLogger(__name__)
 
 def create_run(db, request, actor):
     parameters = validated(SPEC['parameters'], request.parameters, defaults=True)
-    sample_ids = list(db.scalars(select(Observation.id).order_by(Observation.id)))
+    sample_ids = latest_snapshot_observation_ids(db)
     if not sample_ids:
         raise BusinessError('请先导入观测记录')
+    current_order = active_order(db)
     item = AnalysisRun(title=request.title, owner=actor, parameters=parameters, observation_ids=sample_ids,
-                       last_observation_id=sample_ids[-1], sample_size=len(sample_ids))
+                       last_observation_id=max(sample_ids), sample_size=len(sample_ids),
+                       order_id=current_order.id if current_order else None)
     db.add(item)
     db.flush()
-    db.add(AuditEvent(actor=actor, action='run.created', detail=f'分析 #{item.id}，固化 {item.sample_size} 条观测'))
+    scope = f'，基于生效复拍清单 #{current_order.id}' if current_order else ''
+    db.add(AuditEvent(actor=actor, action='run.created',
+                      detail=f'分析 #{item.id}，固化 {item.sample_size} 条最新观测{scope}'))
     return item
 
 
 def visible_runs(db, user, run_id=None):
     query = select(AnalysisRun, Review).outerjoin(Review, Review.run_id == AnalysisRun.id)
     if user['role'] == Role.VIEWER:
-        query = query.where(Review.decision == Decision.APPROVED)
+        query = query.where(Review.decision == 'approved')
     if run_id is not None:
         pair = db.execute(query.where(AnalysisRun.id == run_id)).first()
         if pair is None:
@@ -62,14 +68,18 @@ def run_pending(db):
     if item is None:
         return False
     try:
+        # 已排队的分析始终按提交时固化的读数清单跑，不读取后续更正
         sample = list(db.scalars(select(Observation.payload).where(Observation.id.in_(item.observation_ids))
                                  .order_by(Observation.id)))
-        result = analyze(sample, item.parameters)
+        _, baseline = prior_orphan_baseline(db)
+        result = analyze(sample, item.parameters,
+                         prior_orphan_tickets=baseline if baseline is not None else None)
         if not {'headline', 'summary', 'metrics', 'columns', 'rows'} <= set(result):
             raise RuntimeError('invalid result schema')
         json.dumps(result, allow_nan=False, ensure_ascii=False)
         item.result = result
         item.status = RunStatus.SUCCEEDED
+        create_order_from_run(db, item)
     except ValueError as exc:
         item.error = str(exc)[:600] or '本次观测数据不足以完成计算'
         item.status = RunStatus.FAILED

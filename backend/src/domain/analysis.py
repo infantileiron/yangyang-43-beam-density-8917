@@ -40,12 +40,27 @@ def validate(row):
     _validate_fields(row, _SPEC["fields"])
 
 
+def normalize_rows(rows):
+    """补全复拍批次号（历史读数缺省视为首拍批次 1），并逐行完成字段校验。"""
+    normalized = []
+    for row in rows:
+        item = dict(row)
+        if item.get("batch_no") in (None, ""):
+            item["batch_no"] = 1
+        normalized.append(_validate_fields(item, _SPEC["fields"]))
+    return normalized
+
+
 def _inputs(rows, parameters, identity="ticket"):
-    clean = [_validate_fields(row, _SPEC["fields"]) for row in rows]
-    if len({row[identity] for row in clean}) != len(clean):
-        raise ValueError(f"存在重复的{next(field['label'] for field in _SPEC['fields'] if field['key'] == identity)}，请检查单据")
+    clean = normalize_rows(rows)
+    seen = set()
+    for row in clean:
+        key = (row[identity], row["batch_no"])
+        if key in seen:
+            raise ValueError(f"拍摄编号「{row[identity]}」在批次 {row['batch_no']} 存在重复读数，请检查单据")
+        seen.add(key)
     params = _validate_fields(parameters, _SPEC["parameters"], defaults=True)
-    return sorted(clean, key=lambda row: (row.get("day", ""), row[identity])), params
+    return sorted(clean, key=lambda row: (row.get("day", ""), row[identity], row["batch_no"])), params
 
 
 def _day(start, offset):
@@ -70,7 +85,7 @@ def _output(headline, summary, columns, rows, metrics, chart_name, chart_unit, c
     }
 
 
-COLUMNS = (("ticket", "拍摄编号"), ("room", "放映室"), ("dx", "横移（mm）"), ("dy", "纵移（mm）"),
+COLUMNS = (("ticket", "拍摄编号"), ("batch_no", "复拍批次号"), ("room", "放映室"), ("dx", "横移（mm）"), ("dy", "纵移（mm）"),
            ("degree", "亲和度"), ("group", "偏移工况"), ("decision", "校光建议"))
 
 
@@ -98,7 +113,7 @@ def _partition(embedding, count):
     raise ValueError("聚类未收敛，请调整高斯图带宽或簇数")
 
 
-def analyze(rows, parameters):
+def analyze(rows, parameters, prior_orphan_tickets=None):
     rows, options = _inputs(rows, parameters)
     if not 5 <= len(rows) <= 600:
         raise ValueError("谱聚类可计算 5 至 600 条同批记录")
@@ -127,10 +142,25 @@ def analyze(rows, parameters):
                      "decision": "现场复拍" if group == "孤点" else "比较同簇摆位"}
               for row, group, degree in zip(rows, labels, degrees)]
     counts = Counter(labels)
-    return _output("放映校光偏移簇", f"以 {options['bandwidth']} mm 带宽衡量光斑坐标的相似性。{counts['孤点']} 条亲和度不足的校光拍摄需要复拍，工位可按簇核查偏移。",
+    orphan_tickets = [row["ticket"] for row, group in zip(rows, labels) if group == "孤点"]
+    has_baseline = prior_orphan_tickets is not None
+    baseline = set(prior_orphan_tickets or ())
+    new_orphan_tickets = [ticket for ticket in orphan_tickets if ticket not in baseline] if has_baseline else []
+    metrics = [("可归簇拍摄", int(active.sum()), "张"), ("检测工况", classes, "类"),
+               ("待复拍", counts["孤点"], "张")]
+    if prior_orphan_tickets is not None:
+        metrics.append(("新增孤点", len(new_orphan_tickets), "张"))
+    summary = (f"以 {options['bandwidth']} mm 带宽衡量光斑坐标的相似性。{counts['孤点']} 条亲和度不足的校光拍摄需要复拍，"
+               "工位可按簇核查偏移。")
+    if prior_orphan_tickets is not None and new_orphan_tickets:
+        summary += f"其中 {len(new_orphan_tickets)} 张因周围读数变化新转为孤点：{'、'.join(new_orphan_tickets)}。"
+    return _output("放映校光偏移簇", summary,
                    COLUMNS, sorted(detail, key=lambda row: (row["group"] != "孤点", row["group"], row["ticket"])),
-                   [("可归簇拍摄", int(active.sum()), "张"), ("检测工况", classes, "类"), ("待复拍", counts["孤点"], "张")],
-                   "各工况拍摄次数", "张", sorted(counts.items()))
+                   metrics,
+                   "各工况拍摄次数", "张", sorted(counts.items())) | {
+        "orphan_tickets": orphan_tickets,
+        "new_orphan_tickets": new_orphan_tickets,
+    }
 
 
 def seed():
@@ -138,6 +168,7 @@ def seed():
     rows = []
     for cluster, (x, y) in enumerate(((-7, 4), (8, -4))):
         for i, (u, v) in enumerate(offsets):
-            rows.append({"ticket": f"HY-{cluster + 1}-{i + 1:02}", "room": f"{'西弧' if cluster == 0 else '东台'} {i % 3 + 1} 厅",
+            rows.append({"ticket": f"HY-{cluster + 1}-{i + 1:02}", "batch_no": 1,
+                         "room": f"{'西弧' if cluster == 0 else '东台'} {i % 3 + 1} 厅",
                          "day": _day("2026-11-16", i), "dx": round(x + u, 2), "dy": round(y + v, 2)})
-    return rows + [{"ticket": "HY-X01", "room": "西弧 3 厅", "day": "2026-11-22", "dx": -17, "dy": -13}]
+    return rows + [{"ticket": "HY-X01", "batch_no": 1, "room": "西弧 3 厅", "day": "2026-11-22", "dx": -17, "dy": -13}]

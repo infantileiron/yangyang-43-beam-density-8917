@@ -13,6 +13,12 @@ class RunStatus(StrEnum):
     FAILED = 'failed'
 
 
+class OrderStatus(StrEnum):
+    COMPUTING = 'computing'
+    ACTIVE = 'active'
+    DISCARDED = 'discarded'
+
+
 class Decision(StrEnum):
     APPROVED = 'approved'
     RETURNED = 'returned'

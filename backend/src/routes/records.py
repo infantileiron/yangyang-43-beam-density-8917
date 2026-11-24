@@ -34,10 +34,10 @@ def index(offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100), us
 def create(payload: dict, user=Depends(editor)):
     row = clean_observation(payload)
     with Session.begin() as db:
-        items = add_observations(db, [row], user['sub'], 'observation.created')
-        if not items:
+        report = add_observations(db, [row], user['sub'], 'observation.created')
+        if not report['items']:
             raise BusinessError('相同观测已存在，请核对记录', 409)
-        return observation_view(items[0])
+        return observation_view(report['items'][0])
 
 
 @router.get('/observations/template')
@@ -51,8 +51,9 @@ def template(user=Depends(current_user)):
 def import_payload(payload, actor):
     rows = parse_csv(payload)
     with Session.begin() as db:
-        items = add_observations(db, rows, actor, 'observation.imported')
-        return {'added': len(items), 'skipped': len(rows) - len(items)}
+        report = add_observations(db, rows, actor, 'observation.imported')
+        return {'added': len(report['items']), 'skipped': report['skipped'],
+                'corrections': report['corrections']}
 
 
 @router.post('/observations/import')

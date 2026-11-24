@@ -14,6 +14,16 @@
       "example": "HY-X02"
     },
     {
+      "key": "batch_no",
+      "label": "复拍批次号",
+      "type": "integer",
+      "example": 2,
+      "min": 1,
+      "max": 999,
+      "required": false,
+      "help": "首拍填 1，复拍按批次递增；同一拍摄编号以批次号较大的读数为准"
+    },
+    {
       "key": "room",
       "label": "放映室",
       "type": "text",

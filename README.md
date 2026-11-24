@@ -40,6 +40,14 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 在 `backend` 中可用 `pip install -r requirements.txt` 安装本地依赖，设置 `DATABASE_URL`、`REDIS_URL` 和可写 `ARTIFACT_ROOT` 后运行 `uvicorn src.main:app --port 8000`，计算进程运行 `python -m src.worker`。前端修改在 `frontend/src`，用 `docker compose up -d --build frontend` 通过 Nginx 检查同源代理。业务输入定义在 `backend/src/domain/spec.json`，算法在同目录的 `analysis.py`。角色、任务状态和签核状态在后端 `backend/src/constants/enums.py` 和前端 `frontend/src/constants/enums.js` 共同定义。数据库表在 `backend/src/models/workflow.py`。
 
+### 复拍批次与清单接替
+
+- 观测带 `batch_no`（复拍批次号，留空按首拍 1）。同一拍摄编号以批次号最大的读数为最新坐标，晚到的旧批次会被拒绝，不能顶掉较新坐标；批次必须按次序连续登记。
+- 提交分析时固化“每编号最新读数”的观测快照。已排队的分析始终按快照原读数运行，更正到达后需发起新分析，新分析一次取齐当时的全部更正。
+- 重算以上一份成功分析的孤点集为基线，输出“新增孤点”——即因周围读数变化而新转为孤点的拍摄。
+- 每份成功分析生成一份复拍清单（`retake_orders`，状态为待接替/生效中/已作废）。清单按序号接替：只有序号更大的新清单才能生效，旧清单晚算完也不能换回，会被作废。
+- 复拍场次只能登记在生效清单上，同一清单同一拍摄编号幂等，同批重跑不重复登记。
+
 分发计划锁定特定已签核快照，按北京时间显示。收件箱可下载真实 CSV，当前收件组是本地交接标签。停机跨过多个周期时补送最早未投递的一期，然后追到下一个将来的周期。新快照需重新签核并建新计划。
 
 许可证为 [MIT](LICENSE)。

@@ -24,11 +24,36 @@ class AnalysisRun(Base):
     last_observation_id: Mapped[int] = mapped_column(Integer)
     sample_size: Mapped[int] = mapped_column(Integer)
     observation_ids: Mapped[list] = mapped_column(JSON)
+    order_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(16), default=RunStatus.QUEUED, index=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class RetakeOrder(Base):
+    """复拍清单。sequence 按生成次序单调递增，激活时只允许序号更大的清单接替。"""
+    __tablename__ = 'retake_orders'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sequence: Mapped[int] = mapped_column(Integer, unique=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey('analysis_runs.id'), unique=True)
+    tickets: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class RetakeRegistration(Base):
+    """复拍场次登记，同一生效清单上的同一拍摄编号只登记一次。"""
+    __tablename__ = 'retake_registrations'
+    __table_args__ = (UniqueConstraint('order_id', 'ticket'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey('retake_orders.id'), index=True)
+    ticket: Mapped[str] = mapped_column(String(96))
+    note: Mapped[str] = mapped_column(String(300), default='')
+    actor: Mapped[str] = mapped_column(String(60))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class Review(Base):

@@ -34,6 +34,23 @@ class ReviewInput(BaseModel):
         return value.strip()
 
 
+class RetakeRegistrationInput(BaseModel):
+    ticket: str = Field(min_length=1, max_length=96)
+    note: str = Field(default='', max_length=300)
+
+    @field_validator('ticket')
+    @classmethod
+    def meaningful_ticket(cls, value):
+        if not value.strip():
+            raise ValueError('请填写拍摄编号')
+        return value.strip()
+
+    @field_validator('note')
+    @classmethod
+    def clean_note(cls, value):
+        return value.strip()
+
+
 class ScheduleInput(BaseModel):
     run_id: int = Field(gt=0)
     recipient: str = Field(min_length=2, max_length=100)
